@@ -162,9 +162,8 @@ async function handleCompletions (req, apiKey) {
       body.tools = body.tools || [];
       body.tools.push({googleSearch: {}});
   }
-  const TASK = req.stream ? "streamGenerateContent" : "generateContent";
-  let url = `${BASE_URL}/${API_VERSION}/chat/completions`;
-  if (req.stream) { url += "?alt=sse"; }
+  // 恢复为 Gemini 原生 API 路径和结构
+  let url = `${BASE_URL}/v1beta/models/${model}:generateContent`;
   const response = await fetch(url, {
     method: "POST",
     headers: makeHeaders(apiKey, { "Content-Type": "application/json" }),
@@ -173,7 +172,7 @@ async function handleCompletions (req, apiKey) {
 
   body = response.body;
   if (response.ok) {
-    let id = "chatcmpl-" + generateId(); //"chatcmpl-8pMMaqXMK68B3nyDBrapTDrhkHBQK";
+    let id = "chatcmpl-" + generateId();
     const shared = {};
     if (req.stream) {
       body = response.body
@@ -201,7 +200,7 @@ async function handleCompletions (req, apiKey) {
         }
       } catch (err) {
         console.error("Error parsing response:", err);
-        return new Response(body, fixCors(response)); // output as is
+        return new Response(body, fixCors(response));
       }
       body = processCompletionsResponse(body, model, id);
     }
@@ -473,18 +472,12 @@ const transformTools = (req) => {
   return { tools, tool_config };
 };
 
-// ... existing code ...
-const transformRequest = async (req) => {
-  const { system_instruction, contents } = await transformMessages(req.messages);
-  return {
-    contents,
-    systemInstruction: system_instruction,
-    safetySettings: safetySettings,
-    generationConfig: transformConfig(req),
-    ...transformTools(req)
-  };
-};
-// ... existing code ...
+const transformRequest = async (req) => ({
+  ...await transformMessages(req.messages),
+  safetySettings,
+  generationConfig: transformConfig(req),
+  ...transformTools(req),
+});
 
 const generateId = () => {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
