@@ -473,12 +473,18 @@ const transformTools = (req) => {
   return { tools, tool_config };
 };
 
-const transformRequest = async (req) => ({
-  ...await transformMessages(req.messages),
-  safetySettings,
-  generationConfig: transformConfig(req),
-  ...transformTools(req),
-});
+// ... existing code ...
+const transformRequest = async (req) => {
+  const { system_instruction, contents } = await transformMessages(req.messages);
+  return {
+    contents,
+    systemInstruction: system_instruction,
+    safetySettings: safetySettings,
+    generationConfig: transformConfig(req),
+    ...transformTools(req)
+  };
+};
+// ... existing code ...
 
 const generateId = () => {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
