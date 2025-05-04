@@ -65,7 +65,7 @@ const handleOPTIONS = async () => {
 };
 
 const BASE_URL = "https://generativelanguage.googleapis.com";
-const API_VERSION = "v1beta/openai";
+const API_VERSION = "v1beta";
 
 // https://github.com/google-gemini/generative-ai-js/blob/cf223ff4a1ee5a2d944c53cddb8976136382bee6/src/requests/request.ts#L71
 const API_CLIENT = "genai-js/0.21.0"; // npm view @google/generative-ai version
@@ -162,8 +162,9 @@ async function handleCompletions (req, apiKey) {
       body.tools = body.tools || [];
       body.tools.push({googleSearch: {}});
   }
-  // 恢复为 Gemini 原生 API 路径和结构
-  let url = `${BASE_URL}/v1beta/models/${model}:generateContent`;
+  const TASK = req.stream ? "streamGenerateContent" : "generateContent";
+  let url = `${BASE_URL}/${API_VERSION}/models/${model}:${TASK}`;
+  if (req.stream) { url += "?alt=sse"; }
   const response = await fetch(url, {
     method: "POST",
     headers: makeHeaders(apiKey, { "Content-Type": "application/json" }),
@@ -172,25 +173,31 @@ async function handleCompletions (req, apiKey) {
 
   body = response.body;
   if (response.ok) {
-    let id = "chatcmpl-" + generateId();
+    let id = "chatcmpl-" + generateId(); //"chatcmpl-8pMMaqXMK68B3nyDBrapTDrhkHBQK";
     const shared = {};
     if (req.stream) {
-      body = response.body
-        .pipeThrough(new TextDecoderStream())
-        .pipeThrough(new TransformStream({
-          transform: parseStream,
-          flush: parseStreamFlush,
-          buffer: "",
-          shared,
-        }))
-        .pipeThrough(new TransformStream({
-          transform: toOpenAiStream,
-          flush: toOpenAiStreamFlush,
-          streamIncludeUsage: req.stream_options?.include_usage,
-          model, id, last: [],
-          shared,
-        }))
-        .pipeThrough(new TextEncoderStream());
+      try {
+        body = response.body
+          .pipeThrough(new TextDecoderStream())
+          .pipeThrough(new TransformStream({
+            transform: parseStream,
+            flush: parseStreamFlush,
+            buffer: "",
+            shared,
+          }))
+          .pipeThrough(new TransformStream({
+            transform: toOpenAiStream,
+            flush: toOpenAiStreamFlush,
+            streamIncludeUsage: req.stream_options?.include_usage,
+            model, id, last: [],
+            shared,
+          }))
+          .pipeThrough(new TextEncoderStream());
+      } catch (err) {
+        console.error("Stream pipeline error:", err);
+        // 新增：流式处理异常时返回错误信息，防止中断
+        return new Response("[Stream Error] " + err.message, fixCors(response));
+      }
     } else {
       body = await response.text();
       try {
@@ -200,7 +207,7 @@ async function handleCompletions (req, apiKey) {
         }
       } catch (err) {
         console.error("Error parsing response:", err);
-        return new Response(body, fixCors(response));
+        return new Response(body, fixCors(response)); // output as is
       }
       body = processCompletionsResponse(body, model, id);
     }
